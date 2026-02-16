@@ -82,7 +82,7 @@ python -m PyInstaller --noconsole --onefile src/asistente_tgr.py
 ## 📂 Estructura del Proyecto
 
 ```text
-Kirijo-Asistente-Notaria/
+Automatizacion-App/
 ├── src/
 │   └── asistente_tgr.py   # Código fuente principal
 ├── dist/                  # Carpeta donde se genera el .exe (No subir a Git)
