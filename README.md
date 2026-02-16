@@ -22,7 +22,7 @@ Esta herramienta act√∫a como un puente entre la base de datos local de la notar√
 
 1. **Clonar el repositorio:**
    ```bash
-   git clone [https://github.com/TU_USUARIO/Kirijo-Asistente-Notaria.git](https://github.com/TU_USUARIO/Kirijo-Asistente-Notaria.git)
+   git clone [https://github.com/crdml/Automatizacion-App.git](https://github.com/crdml/Automatizacion-App.git)
    cd Kirijo-Asistente-Notaria
 
 2. **Crear entorno virtual (Opcional pero recomendado):**
