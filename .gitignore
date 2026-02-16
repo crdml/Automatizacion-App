@@ -1,0 +1,19 @@
+# Archivos de compilación de Python (basura)
+__pycache__/
+*.py[cod]
+
+# Carpetas de PyInstaller (No subir, pesan mucho y se generan solas)
+build/
+dist/
+*.spec
+
+# Archivos de sistema operativo
+.DS_Store
+Thumbs.db
+
+# Entornos virtuales (si usaras uno)
+venv/
+env/
+
+# Logs de errores
+*.log
