@@ -1,9 +1,4 @@
-¡Por supuesto! Aquí tienes el archivo `README.md` completo y listo para copiar.
-
-Simplemente crea un archivo nuevo en tu carpeta, llámalo **`README.md`** y pega todo el contenido del siguiente bloque:
-
-```markdown
-# 🤖 Kirijo OS - Asistente Notarial (TGR F23)
+# 🤖 Automatizacion-App - Asistente Notarial (TGR F23)
 
 Aplicación de escritorio desarrollada en Python y PySide6 para automatizar el llenado del **Formulario 23 (F23)** en el portal de la Tesorería General de la República (TGR).
 
@@ -27,27 +22,18 @@ Esta herramienta actúa como un puente entre la base de datos local de la notar�
 
 1. **Clonar el repositorio:**
    ```bash
-   git clone [https://github.com/TU_USUARIO/Kirijo-Asistente-Notaria.git](https://github.com/TU_USUARIO/Kirijo-Asistente-Notaria.git)
-   cd Kirijo-Asistente-Notaria
-
-```
+   git clone [https://github.com/crdml/Automatizacion-App.git](https://github.com/crdml/Automatizacion-App.git)
+   cd Automatizacion-App
 
 2. **Crear entorno virtual (Opcional pero recomendado):**
 ```bash
 python -m venv venv
 .\venv\Scripts\activate
-
 ```
-
-
 3. **Instalar dependencias:**
 ```bash
 pip install -r requirements.txt
-
 ```
-
-
-*(Asegúrate de que `requirements.txt` incluya: PySide6, mysql-connector-python, pyinstaller)*
 
 ## ⚙️ Configuración
 
@@ -68,8 +54,6 @@ DB_CONFIG = {
 }
 
 ```
-
-> **⚠️ IMPORTANTE:** Nunca subas contraseñas reales al repositorio público. Usa variables de entorno o un archivo de configuración externo si es posible.
 
 ## ▶️ Uso y Ejecución
 
@@ -98,7 +82,7 @@ python -m PyInstaller --noconsole --onefile src/asistente_tgr.py
 ## 📂 Estructura del Proyecto
 
 ```text
-Kirijo-Asistente-Notaria/
+Automatizacion-App/
 ├── src/
 │   └── asistente_tgr.py   # Código fuente principal
 ├── dist/                  # Carpeta donde se genera el .exe (No subir a Git)
@@ -112,7 +96,3 @@ Kirijo-Asistente-Notaria/
 ## 📄 Licencia
 
 Desarrollado por **Francisca Cardemil** para uso interno.
-
-```
-
-```
