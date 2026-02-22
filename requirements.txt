@@ -1,3 +1,4 @@
 PySide6
 mysql-connector-python
 pyinstaller
+python-dotenv
