@@ -9,16 +9,16 @@ import os
 import mysql.connector
 
 # --- PARCHE PARA PYINSTALLER ---
-# Obliga a PyInstaller a empaquetar los traductores y plugins de conexión de MySQL
 import mysql.connector.locales.eng.client_error
 import mysql.connector.plugins.mysql_native_password
 import mysql.connector.plugins.caching_sha2_password
 # -------------------------------
 
 from PySide6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, 
-                               QWidget, QPushButton, QMessageBox, QLabel, QLineEdit)
+                               QWidget, QPushButton, QMessageBox, QLabel, QLineEdit, QFileDialog)
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWebEngineWidgets import QWebEngineView
+from PySide6.QtWebEngineCore import QWebEngineSettings, QWebEngineProfile
 from PySide6.QtCore import QUrl
 
 # Importar los datos de prueba
@@ -34,21 +34,21 @@ except ImportError:
 MODO_TESTING = False
 
 DB_CONFIG = {
-    'host': '',
-    'port': ,
-    'user': '',
+    'host': 'localhost',
+    'port': 3306,
+    'user': 'root',
     'password': '',
-    'database': ''
+    'database': 'ejemplo'
 }
 
 # DATOS FIJOS DEL NOTARIO
 DATOS_NOTARIO = {
-    'L23': '5920860-8',       
-    'L21': 'GERVASIO',        
-    'L22': 'ZAMUDIO',         
+    'L23': '59898765',       
+    'L21': 'PEÑA',        
+    'L22': 'PEREZ',         
     'L25': 'ELIANA',          
     'L26': 'ARLEGUI',         
-    'L29': '322186925',       
+    'L29': '3225965',       
     'L28': 'VINA DEL MAR'     
 }
 
@@ -70,13 +70,20 @@ LIMIT 1
 # ==========================================
 
 def limpiar_dato(valor):
-    """Limpia los datos de la BD: elimina decimales extraños (.0) en números y evita que inyecte la palabra 'None'"""
     if valor is None:
         return ""
-    # Si MySQL devolvió un Float (ej: 27721623.0), lo convertimos a entero primero
     if isinstance(valor, float) and valor.is_integer():
         return str(int(valor))
     return str(valor).strip()
+
+# ==========================================
+# CLASE NAVEGADOR PERSONALIZADO (NUEVO)
+# ==========================================
+class NavegadorTGR(QWebEngineView):
+    def createWindow(self, windowType):
+        # Esta es la magia: Si la TGR intenta abrir una pestaña nueva (ej: para pagar),
+        # le decimos que la abra en esta misma ventana para no perderla.
+        return self
 
 # ==========================================
 # LÓGICA DE LA APLICACIÓN
@@ -148,7 +155,18 @@ class AsistenteTGR(QMainWindow):
         self.status_label.setStyleSheet("font-weight: bold; padding: 5px; color: #f1c40f; font-size: 14px;")
         layout.addWidget(self.status_label)
 
-        self.browser = QWebEngineView()
+        # Usamos nuestro nuevo navegador con soporte para pestañas emergentes
+        self.browser = NavegadorTGR()
+        
+        # Habilitamos Pop-ups, Plugins y el Lector de PDFs interno
+        settings = self.browser.settings()
+        settings.setAttribute(QWebEngineSettings.WebAttribute.PdfViewerEnabled, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanOpenWindows, True)
+        
+        # Conectamos el gestor de descargas
+        self.browser.page().profile().downloadRequested.connect(self.gestionar_descarga)
+
         self.browser.setUrl(QUrl("https://www.tesoreria.cl/IntForm23NotarioWeb/"))
         layout.addWidget(self.browser)
 
@@ -156,8 +174,21 @@ class AsistenteTGR(QMainWindow):
         container.setLayout(layout)
         self.setCentralWidget(container)
 
+    # --- NUEVA FUNCIÓN: GESTOR DE DESCARGAS ---
+    def gestionar_descarga(self, download):
+        """Abre la ventana de 'Guardar como...' si la TGR intenta descargar un archivo"""
+        ruta_guardado, _ = QFileDialog.getSaveFileName(
+            self, 
+            "Guardar Archivo (TGR)", 
+            download.downloadFileName()
+        )
+        if ruta_guardado:
+            download.setDownloadDirectory(os.path.dirname(ruta_guardado))
+            download.setDownloadFileName(os.path.basename(ruta_guardado))
+            download.accept()
+            self.status_label.setText("Estado: Archivo descargado con éxito.")
+
     def reiniciar_formulario(self):
-        """Limpia las cajas de texto y recarga la web original de la TGR"""
         self.input_repertorio.clear()
         self.input_anio.clear()
         self.status_label.setText("Estado: Cargando nuevo formulario en blanco...")
@@ -166,11 +197,9 @@ class AsistenteTGR(QMainWindow):
     def procesar_reglas_negocio(self, row):
         datos_form = DATOS_NOTARIO.copy()
 
-        # [L03, L003] RUT CLIENTE
         datos_form['L03'] = limpiar_dato(row.get('RUT_COM'))
         datos_form['L003'] = limpiar_dato(row.get('DV_COM'))
 
-        # [L34 - L51] VEHÍCULO
         datos_form['L34'] = limpiar_dato(row.get('TIPO_VEHICULO'))
         datos_form['L35'] = limpiar_dato(row.get('MARCA'))
         datos_form['L36'] = limpiar_dato(row.get('MODELO'))
@@ -179,7 +208,6 @@ class AsistenteTGR(QMainWindow):
         datos_form['L50'] = limpiar_dato(row.get('MOTOR'))
         datos_form['L51'] = limpiar_dato(row.get('CHASIS'))
 
-        # [L18 - L11] PERMISO, SII Y VALORES
         datos_form['L18'] = limpiar_dato(row.get('CIUDAD_PERMISO')) 
         datos_form['L19'] = limpiar_dato(row.get('ANNO_PERMISO'))
         datos_form['L9']  = limpiar_dato(row.get('COD_SII'))
@@ -193,14 +221,11 @@ class AsistenteTGR(QMainWindow):
         datos_form['L10'] = str(int(precio_venta))
         datos_form['L11'] = str(int(tasacion))
 
-        # [L17 - L47] REPERTORIO Y AÑO
         datos_form['L17'] = limpiar_dato(row.get('NUM_FOL'))
         datos_form['L47'] = limpiar_dato(row.get('AN_PROC')) 
 
-        # [L43 - L39] VENDEDOR
         rut_ven = limpiar_dato(row.get('RUT_VEN'))
         dv_ven = limpiar_dato(row.get('DV_VEN'))
-        # Concatenación del RUT del Vendedor
         datos_form['L43'] = f"{rut_ven}-{dv_ven}" if rut_ven and dv_ven else rut_ven
         
         datos_form['L42'] = limpiar_dato(row.get('APPATERNO_VEN')) 
@@ -214,10 +239,8 @@ class AsistenteTGR(QMainWindow):
         datos_form['L38'] = limpiar_dato(row.get('COMUNA_VEN')) 
         datos_form['L39'] = limpiar_dato(row.get('TELEFONO_VEN'))
 
-        # [L33 - L49] COMPRADOR
         rut_com = limpiar_dato(row.get('RUT_COM'))
         dv_com = limpiar_dato(row.get('DV_COM'))
-        # Concatenación del RUT del Comprador
         datos_form['L33'] = f"{rut_com}-{dv_com}" if rut_com and dv_com else rut_com
         
         datos_form['L61'] = limpiar_dato(row.get('APPATERNO_COM')) 
@@ -231,7 +254,6 @@ class AsistenteTGR(QMainWindow):
         datos_form['L48'] = limpiar_dato(row.get('COMUNA_COM'))
         datos_form['L49'] = limpiar_dato(row.get('TELEFONO_COM'))
 
-        # [L77 - L91] IMPUESTOS MUNICIPALES
         base_impuesto = max(precio_venta, tasacion)
         derecho_municipal = round(base_impuesto * 0.015)
         
@@ -334,12 +356,9 @@ class AsistenteTGR(QMainWindow):
             QMessageBox.critical(self, "Error", "No se encontró ningún campo.")
 
 if __name__ == "__main__":
-    # --- PARCHE PARA COMPUTADORES ANTIGUOS ---
-    # Desactiva la aceleración por hardware (GPU) para evitar crasheos
     sys.argv.append("--disable-gpu")
     sys.argv.append("--no-sandbox")
     os.environ["QT_OPENGL"] = "software"
-    # -----------------------------------------
 
     app = QApplication(sys.argv)
     window = AsistenteTGR()
