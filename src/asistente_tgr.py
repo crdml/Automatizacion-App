@@ -7,7 +7,14 @@ import sys
 import json
 import os
 import mysql.connector
-from dotenv import load_dotenv
+
+# --- PARCHE PARA PYINSTALLER ---
+# Obliga a PyInstaller a empaquetar los traductores y plugins de conexión de MySQL
+import mysql.connector.locales.eng.client_error
+import mysql.connector.plugins.mysql_native_password
+import mysql.connector.plugins.caching_sha2_password
+# -------------------------------
+
 from PySide6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, 
                                QWidget, QPushButton, QMessageBox, QLabel, QLineEdit)
 from PySide6.QtGui import QIntValidator
@@ -20,9 +27,6 @@ try:
 except ImportError:
     DATOS_MOCK = {}
 
-# Cargar las variables del archivo .env
-load_dotenv()
-
 # ==========================================
 # CONFIGURACIÓN DE LA BASE DE DATOS
 # ==========================================
@@ -30,11 +34,11 @@ load_dotenv()
 MODO_TESTING = False
 
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST'),
-    'port': int(os.getenv('DB_PORT', 3306)),
-    'user': os.getenv('DB_USER'),
-    'password': os.getenv('DB_PASSWORD'),
-    'database': os.getenv('DB_NAME')
+    'host': '',
+    'port': ,
+    'user': '',
+    'password': '',
+    'database': ''
 }
 
 # DATOS FIJOS DEL NOTARIO
@@ -48,7 +52,7 @@ DATOS_NOTARIO = {
     'L28': 'VINA DEL MAR'     
 }
 
-# CONSULTA SQL (Agregado DV_VEN y reordenado para mayor claridad)
+# CONSULTA SQL 
 QUERY_SQL = """
 SELECT 
     RUT_COM, DV_COM, 
@@ -123,9 +127,9 @@ class AsistenteTGR(QMainWindow):
         self.btn_nuevo.setFixedHeight(35)
         self.btn_nuevo.setStyleSheet("""
             QPushButton {
-                background-color: #C0B9D6; color: #192A56; font-size: 14px; font-weight: bold; border-radius: 5px; padding: 0 15px;
+                background-color: #192A56; color: #C0B9D6; font-size: 14px; font-weight: bold; border-radius: 5px; padding: 0 15px;
             }
-            QPushButton:hover { background-color: #a8a0c0; color: #0d1630; }
+            QPushButton:hover { background-color: #0d1630; color: white; }
         """)
         self.btn_nuevo.clicked.connect(self.reiniciar_formulario)
 
@@ -162,7 +166,7 @@ class AsistenteTGR(QMainWindow):
     def procesar_reglas_negocio(self, row):
         datos_form = DATOS_NOTARIO.copy()
 
-        # [L03, L003] RUT CLIENTE (El que va arriba en la TGR, separado)
+        # [L03, L003] RUT CLIENTE
         datos_form['L03'] = limpiar_dato(row.get('RUT_COM'))
         datos_form['L003'] = limpiar_dato(row.get('DV_COM'))
 
@@ -330,6 +334,13 @@ class AsistenteTGR(QMainWindow):
             QMessageBox.critical(self, "Error", "No se encontró ningún campo.")
 
 if __name__ == "__main__":
+    # --- PARCHE PARA COMPUTADORES ANTIGUOS ---
+    # Desactiva la aceleración por hardware (GPU) para evitar crasheos
+    sys.argv.append("--disable-gpu")
+    sys.argv.append("--no-sandbox")
+    os.environ["QT_OPENGL"] = "software"
+    # -----------------------------------------
+
     app = QApplication(sys.argv)
     window = AsistenteTGR()
     window.show()
