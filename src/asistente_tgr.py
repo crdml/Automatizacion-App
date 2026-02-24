@@ -27,15 +27,17 @@ load_dotenv()
 # CONFIGURACIÓN DE LA BASE DE DATOS
 # ==========================================
 
-# MODO_TESTING = True  -> Usa los datos falsos de mock_data.py (Folio 1540, Año 2024). Ideal para hacer pruebas de inyección web sin tocar la BD.
-# MODO_TESTING = False -> Se conecta a la base de datos MySQL real usando las credenciales del archivo .env.
-MODO_TESTING = True
+# MODO_TESTING = True  -> Usa los datos falsos de mock_data.py.
+# MODO_TESTING = False -> Se conecta a la base de datos MySQL real.
+MODO_TESTING = False
 
+# La configuración viene del archivo .env
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST', '192.168.0.170:3308'),
-    'user': os.getenv('DB_USER', 'root'),
-    'password': os.getenv('DB_PASSWORD', ''),
-    'database': os.getenv('DB_NAME', 'notarial')
+    'host': os.getenv('DB_HOST'),
+    'port': int(os.getenv('DB_PORT', 3306)),
+    'user': os.getenv('DB_USER'),
+    'password': os.getenv('DB_PASSWORD'),
+    'database': os.getenv('DB_NAME')
 }
 
 # DATOS FIJOS DEL NOTARIO
@@ -49,15 +51,15 @@ DATOS_NOTARIO = {
     'L28': 'VINA DEL MAR'     
 }
 
-# CONSULTA SQL CON NOMBRES REALES DE BD
+# CONSULTA SQL
 QUERY_SQL = """
 SELECT 
     RUT_COM, DV_COM, 
-    TIPO_VEHICULO, MARCA, MODELO, ANNO, NOT_PATENTE, MOTOR, CHASIS, ANNO_PERMISO, COD_SII, PRECIO_VENTA, TASACION,
+    TIPO_VEHICULO, MARCA, MODELO, ANO, PATENTE, MOTOR, CHASIS, ANNO_PERMISO, COD_SII, PRECIO_VENTA, TASACION,
     NUM_FOL, AN_PROC,
-    RUT_VEN, AP_PATERNO_VEN, AP_MATERNO_VEN, NOMBRES_VEN, CALLE_VEN, NRO_CALLE_VEN, TELEFONO_VEN,
+    RUT_VEN, APPATERNO_VEN, APMATERNO_VEN, NOMBRES_VEN, CALLE_VEN, NRO_CALLE_VEN, TELEFONO_VEN,
     APPATERNO_COM, APMATERNO_COM, NOMBRES_COM, CALLE_COM, NRO_CALLE_COM, TELEFONO_COM
-FROM tramites 
+FROM not_patente 
 WHERE NUM_FOL = %s AND AN_PROC = %s
 LIMIT 1
 """
@@ -78,18 +80,26 @@ class AsistenteTGR(QMainWindow):
         search_layout = QHBoxLayout()
         validador_numeros = QIntValidator()
         
+        label_folio = QLabel("<b>N° Folio:</b>")
+        label_folio.setStyleSheet("color: white; font-size: 14px;")
+        
         self.input_repertorio = QLineEdit()
         self.input_repertorio.setPlaceholderText("N° Folio (Ej: 1540)")
         self.input_repertorio.setFixedHeight(35)
         self.input_repertorio.setValidator(validador_numeros)
+        self.input_repertorio.setStyleSheet("background-color: white; color: black; font-size: 14px;")
+        
+        label_anio = QLabel("<b>Año:</b>")
+        label_anio.setStyleSheet("color: white; font-size: 14px;")
         
         self.input_anio = QLineEdit()
         self.input_anio.setPlaceholderText("Año (Ej: 2024)")
         self.input_anio.setFixedHeight(35)
         self.input_anio.setValidator(validador_numeros)
         self.input_anio.setMaxLength(4)
+        self.input_anio.setStyleSheet("background-color: white; color: black; font-size: 14px;")
 
-        self.btn_action = QPushButton("⚡ BUSCAR EN BD Y RELLENAR")
+        self.btn_action = QPushButton("⚡ BUSCAR Y RELLENAR")
         self.btn_action.setFixedHeight(35)
         self.btn_action.setStyleSheet("""
             QPushButton {
@@ -99,18 +109,29 @@ class AsistenteTGR(QMainWindow):
         """)
         self.btn_action.clicked.connect(self.ejecutar_proceso)
 
-        search_layout.addWidget(QLabel("<b>N° Folio:</b>"))
+        self.btn_nuevo = QPushButton("🔄 NUEVO TRÁMITE")
+        self.btn_nuevo.setFixedHeight(35)
+        self.btn_nuevo.setStyleSheet("""
+            QPushButton {
+                background-color: #C0B9D6; color: #192A56; font-size: 14px; font-weight: bold; border-radius: 5px; padding: 0 15px;
+            }
+            QPushButton:hover { background-color: #a8a0c0; color: #0d1630; }
+        """)
+        self.btn_nuevo.clicked.connect(self.reiniciar_formulario)
+
+        search_layout.addWidget(label_folio)
         search_layout.addWidget(self.input_repertorio)
-        search_layout.addWidget(QLabel("<b>Año:</b>"))
+        search_layout.addWidget(label_anio)
         search_layout.addWidget(self.input_anio)
         search_layout.addWidget(self.btn_action)
+        search_layout.addWidget(self.btn_nuevo)
         search_layout.addStretch()
 
         layout.addLayout(search_layout)
 
         # --- ESTADO Y NAVEGADOR ---
         self.status_label = QLabel("Estado: Esperando búsqueda...")
-        self.status_label.setStyleSheet("font-weight: bold; padding: 5px; color: #333;")
+        self.status_label.setStyleSheet("font-weight: bold; padding: 5px; color: #f1c40f; font-size: 14px;")
         layout.addWidget(self.status_label)
 
         self.browser = QWebEngineView()
@@ -121,24 +142,27 @@ class AsistenteTGR(QMainWindow):
         container.setLayout(layout)
         self.setCentralWidget(container)
 
+    def reiniciar_formulario(self):
+        """Limpia las cajas de texto y recarga la web original de la TGR"""
+        self.input_repertorio.clear()
+        self.input_anio.clear()
+        self.status_label.setText("Estado: Cargando nuevo formulario en blanco...")
+        self.browser.setUrl(QUrl("https://www.tesoreria.cl/IntForm23NotarioWeb/"))
+
     def procesar_reglas_negocio(self, row):
-        """Mapea los datos de la base de datos exactamente en el orden del formulario HTML"""
         datos_form = DATOS_NOTARIO.copy()
 
-        # [L03, L003] RUT CLIENTE PÁGINA SUPERIOR
         datos_form['L03'] = str(row.get('RUT_COM', ''))
         datos_form['L003'] = str(row.get('DV_COM', ''))
 
-        # [L34 - L51] DATOS DEL VEHÍCULO
         datos_form['L34'] = str(row.get('TIPO_VEHICULO', ''))
         datos_form['L35'] = str(row.get('MARCA', ''))
         datos_form['L36'] = str(row.get('MODELO', ''))
-        datos_form['L37'] = str(row.get('ANNO', ''))
+        datos_form['L37'] = str(row.get('ANO', ''))
         datos_form['L12'] = str(row.get('NOT_PATENTE', ''))
         datos_form['L50'] = str(row.get('MOTOR', ''))
         datos_form['L51'] = str(row.get('CHASIS', ''))
 
-        # [L18 - L11] PERMISO, SII Y VALORES
         datos_form['L18'] = str(row.get('COMUNA_PERMISO', '')) 
         datos_form['L19'] = str(row.get('ANNO_PERMISO', ''))
         datos_form['L9']  = str(row.get('COD_SII', ''))
@@ -152,11 +176,9 @@ class AsistenteTGR(QMainWindow):
         datos_form['L10'] = str(int(precio_venta))
         datos_form['L11'] = str(int(tasacion))
 
-        # [L17 - L47] REPERTORIO Y AÑO
         datos_form['L17'] = str(row.get('NUM_FOL', ''))
         datos_form['L47'] = str(row.get('AN_PROC', '')) 
 
-        # [L43 - L39] DATOS DEL VENDEDOR
         datos_form['L43'] = str(row.get('RUT_VEN', '')) 
         datos_form['L42'] = str(row.get('AP_PATERNO_VEN', ''))
         datos_form['L44'] = str(row.get('AP_MATERNO_VEN', ''))
@@ -169,7 +191,6 @@ class AsistenteTGR(QMainWindow):
         datos_form['L38'] = str(row.get('COMUNA_VEN', '')) 
         datos_form['L39'] = str(row.get('TELEFONO_VEN', ''))
 
-        # [L33 - L49] DATOS DEL COMPRADOR
         rut_com = str(row.get('RUT_COM', ''))
         dv_com = str(row.get('DV_COM', ''))
         datos_form['L33'] = f"{rut_com}-{dv_com}" if rut_com and dv_com else rut_com
@@ -185,7 +206,6 @@ class AsistenteTGR(QMainWindow):
         datos_form['L48'] = str(row.get('COMUNA_COM', ''))
         datos_form['L49'] = str(row.get('TELEFONO_COM', ''))
 
-        # [L77 - L91] IMPUESTOS MUNICIPALES
         base_impuesto = max(precio_venta, tasacion)
         derecho_municipal = round(base_impuesto * 0.015)
         
