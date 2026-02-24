@@ -27,11 +27,8 @@ load_dotenv()
 # CONFIGURACIÓN DE LA BASE DE DATOS
 # ==========================================
 
-# MODO_TESTING = True  -> Usa los datos falsos de mock_data.py.
-# MODO_TESTING = False -> Se conecta a la base de datos MySQL real.
 MODO_TESTING = False
 
-# La configuración viene del archivo .env
 DB_CONFIG = {
     'host': os.getenv('DB_HOST'),
     'port': int(os.getenv('DB_PORT', 3306)),
@@ -51,18 +48,31 @@ DATOS_NOTARIO = {
     'L28': 'VINA DEL MAR'     
 }
 
-# CONSULTA SQL
+# CONSULTA SQL (Agregado DV_VEN y reordenado para mayor claridad)
 QUERY_SQL = """
 SELECT 
     RUT_COM, DV_COM, 
-    TIPO_VEHICULO, MARCA, MODELO, ANO, PATENTE, MOTOR, CHASIS, ANNO_PERMISO, COD_SII, PRECIO_VENTA, TASACION,
+    TIPO_VEHICULO, MARCA, MODELO, ANO, PATENTE, MOTOR, CHASIS, ANNO_PERMISO, COD_SII, PRECIO_VENTA, TASACION, CIUDAD_PERMISO,
     NUM_FOL, AN_PROC,
-    RUT_VEN, APPATERNO_VEN, APMATERNO_VEN, NOMBRES_VEN, CALLE_VEN, NRO_CALLE_VEN, TELEFONO_VEN,
-    APPATERNO_COM, APMATERNO_COM, NOMBRES_COM, CALLE_COM, NRO_CALLE_COM, TELEFONO_COM
+    RUT_VEN, DV_VEN, APPATERNO_VEN, APMATERNO_VEN, NOMBRES_VEN, CALLE_VEN, NRO_CALLE_VEN, TELEFONO_VEN, COMUNA_VEN,
+    APPATERNO_COM, APMATERNO_COM, NOMBRES_COM, CALLE_COM, NRO_CALLE_COM, TELEFONO_COM, COMUNA_COM
 FROM not_patente 
 WHERE NUM_FOL = %s AND AN_PROC = %s
 LIMIT 1
 """
+
+# ==========================================
+# FUNCIONES AUXILIARES
+# ==========================================
+
+def limpiar_dato(valor):
+    """Limpia los datos de la BD: elimina decimales extraños (.0) en números y evita que inyecte la palabra 'None'"""
+    if valor is None:
+        return ""
+    # Si MySQL devolvió un Float (ej: 27721623.0), lo convertimos a entero primero
+    if isinstance(valor, float) and valor.is_integer():
+        return str(int(valor))
+    return str(valor).strip()
 
 # ==========================================
 # LÓGICA DE LA APLICACIÓN
@@ -152,60 +162,72 @@ class AsistenteTGR(QMainWindow):
     def procesar_reglas_negocio(self, row):
         datos_form = DATOS_NOTARIO.copy()
 
-        datos_form['L03'] = str(row.get('RUT_COM', ''))
-        datos_form['L003'] = str(row.get('DV_COM', ''))
+        # [L03, L003] RUT CLIENTE (El que va arriba en la TGR, separado)
+        datos_form['L03'] = limpiar_dato(row.get('RUT_COM'))
+        datos_form['L003'] = limpiar_dato(row.get('DV_COM'))
 
-        datos_form['L34'] = str(row.get('TIPO_VEHICULO', ''))
-        datos_form['L35'] = str(row.get('MARCA', ''))
-        datos_form['L36'] = str(row.get('MODELO', ''))
-        datos_form['L37'] = str(row.get('ANO', ''))
-        datos_form['L12'] = str(row.get('NOT_PATENTE', ''))
-        datos_form['L50'] = str(row.get('MOTOR', ''))
-        datos_form['L51'] = str(row.get('CHASIS', ''))
+        # [L34 - L51] VEHÍCULO
+        datos_form['L34'] = limpiar_dato(row.get('TIPO_VEHICULO'))
+        datos_form['L35'] = limpiar_dato(row.get('MARCA'))
+        datos_form['L36'] = limpiar_dato(row.get('MODELO'))
+        datos_form['L37'] = limpiar_dato(row.get('ANO'))
+        datos_form['L12'] = limpiar_dato(row.get('PATENTE')) 
+        datos_form['L50'] = limpiar_dato(row.get('MOTOR'))
+        datos_form['L51'] = limpiar_dato(row.get('CHASIS'))
 
-        datos_form['L18'] = str(row.get('COMUNA_PERMISO', '')) 
-        datos_form['L19'] = str(row.get('ANNO_PERMISO', ''))
-        datos_form['L9']  = str(row.get('COD_SII', ''))
+        # [L18 - L11] PERMISO, SII Y VALORES
+        datos_form['L18'] = limpiar_dato(row.get('CIUDAD_PERMISO')) 
+        datos_form['L19'] = limpiar_dato(row.get('ANNO_PERMISO'))
+        datos_form['L9']  = limpiar_dato(row.get('COD_SII'))
         
         try:
-            precio_venta = float(row.get('PRECIO_VENTA', 0))
-            tasacion = float(row.get('TASACION', 0))
+            precio_venta = float(row.get('PRECIO_VENTA') or 0)
+            tasacion = float(row.get('TASACION') or 0)
         except ValueError:
             precio_venta, tasacion = 0.0, 0.0
             
         datos_form['L10'] = str(int(precio_venta))
         datos_form['L11'] = str(int(tasacion))
 
-        datos_form['L17'] = str(row.get('NUM_FOL', ''))
-        datos_form['L47'] = str(row.get('AN_PROC', '')) 
+        # [L17 - L47] REPERTORIO Y AÑO
+        datos_form['L17'] = limpiar_dato(row.get('NUM_FOL'))
+        datos_form['L47'] = limpiar_dato(row.get('AN_PROC')) 
 
-        datos_form['L43'] = str(row.get('RUT_VEN', '')) 
-        datos_form['L42'] = str(row.get('AP_PATERNO_VEN', ''))
-        datos_form['L44'] = str(row.get('AP_MATERNO_VEN', ''))
-        datos_form['L45'] = str(row.get('NOMBRES_VEN', ''))
+        # [L43 - L39] VENDEDOR
+        rut_ven = limpiar_dato(row.get('RUT_VEN'))
+        dv_ven = limpiar_dato(row.get('DV_VEN'))
+        # Concatenación del RUT del Vendedor
+        datos_form['L43'] = f"{rut_ven}-{dv_ven}" if rut_ven and dv_ven else rut_ven
         
-        calle_ven = str(row.get('CALLE_VEN', ''))
-        nro_ven = str(row.get('NRO_CALLE_VEN', ''))
+        datos_form['L42'] = limpiar_dato(row.get('APPATERNO_VEN')) 
+        datos_form['L44'] = limpiar_dato(row.get('APMATERNO_VEN')) 
+        datos_form['L45'] = limpiar_dato(row.get('NOMBRES_VEN'))
+        
+        calle_ven = limpiar_dato(row.get('CALLE_VEN'))
+        nro_ven = limpiar_dato(row.get('NRO_CALLE_VEN'))
         datos_form['L32'] = f"{calle_ven} {nro_ven}".strip()
         
-        datos_form['L38'] = str(row.get('COMUNA_VEN', '')) 
-        datos_form['L39'] = str(row.get('TELEFONO_VEN', ''))
+        datos_form['L38'] = limpiar_dato(row.get('COMUNA_VEN')) 
+        datos_form['L39'] = limpiar_dato(row.get('TELEFONO_VEN'))
 
-        rut_com = str(row.get('RUT_COM', ''))
-        dv_com = str(row.get('DV_COM', ''))
+        # [L33 - L49] COMPRADOR
+        rut_com = limpiar_dato(row.get('RUT_COM'))
+        dv_com = limpiar_dato(row.get('DV_COM'))
+        # Concatenación del RUT del Comprador
         datos_form['L33'] = f"{rut_com}-{dv_com}" if rut_com and dv_com else rut_com
         
-        datos_form['L61'] = str(row.get('APPATERNO_COM', '')) 
-        datos_form['L62'] = str(row.get('APMATERNO_COM', ''))
-        datos_form['L65'] = str(row.get('NOMBRES_COM', ''))
+        datos_form['L61'] = limpiar_dato(row.get('APPATERNO_COM')) 
+        datos_form['L62'] = limpiar_dato(row.get('APMATERNO_COM'))
+        datos_form['L65'] = limpiar_dato(row.get('NOMBRES_COM'))
         
-        calle_com = str(row.get('CALLE_COM', ''))
-        nro_com = str(row.get('NRO_CALLE_COM', ''))
+        calle_com = limpiar_dato(row.get('CALLE_COM'))
+        nro_com = limpiar_dato(row.get('NRO_CALLE_COM'))
         datos_form['L46'] = f"{calle_com} {nro_com}".strip()
         
-        datos_form['L48'] = str(row.get('COMUNA_COM', ''))
-        datos_form['L49'] = str(row.get('TELEFONO_COM', ''))
+        datos_form['L48'] = limpiar_dato(row.get('COMUNA_COM'))
+        datos_form['L49'] = limpiar_dato(row.get('TELEFONO_COM'))
 
+        # [L77 - L91] IMPUESTOS MUNICIPALES
         base_impuesto = max(precio_venta, tasacion)
         derecho_municipal = round(base_impuesto * 0.015)
         
