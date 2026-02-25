@@ -15,11 +15,11 @@ import mysql.connector.plugins.caching_sha2_password
 # -------------------------------
 
 from PySide6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, 
-                               QWidget, QPushButton, QMessageBox, QLabel, QLineEdit, QFileDialog)
+                               QWidget, QPushButton, QMessageBox, QLabel, QLineEdit, QFileDialog, QSizePolicy)
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWebEngineCore import QWebEngineSettings, QWebEngineProfile
-from PySide6.QtCore import QUrl
+from PySide6.QtWebEngineCore import QWebEngineSettings, QWebEnginePage
+from PySide6.QtCore import QUrl, Qt
 
 # Importar los datos de prueba
 try:
@@ -31,7 +31,7 @@ except ImportError:
 # CONFIGURACIÓN DE LA BASE DE DATOS
 # ==========================================
 
-MODO_TESTING = False
+MODO_TESTING = True
 
 DB_CONFIG = {
     'host': 'localhost',
@@ -41,33 +41,27 @@ DB_CONFIG = {
     'database': 'ejemplo'
 }
 
-# DATOS FIJOS DEL NOTARIO
 DATOS_NOTARIO = {
-    'L23': '59898765',       
-    'L21': 'PEÑA',        
-    'L22': 'PEREZ',         
-    'L25': 'ELIANA',          
-    'L26': 'ARLEGUI',         
-    'L29': '3225965',       
+    'L23': '5698741-8',       
+    'L21': 'ALARCON',        
+    'L22': 'PPEREZ',         
+    'L25': 'JOSE',          
+    'L26': 'VIÑA',         
+    'L29': '32658469',       
     'L28': 'VINA DEL MAR'     
 }
 
-# CONSULTA SQL 
 QUERY_SQL = """
 SELECT 
     RUT_COM, DV_COM, 
     TIPO_VEHICULO, MARCA, MODELO, ANO, PATENTE, MOTOR, CHASIS, ANNO_PERMISO, COD_SII, PRECIO_VENTA, TASACION, CIUDAD_PERMISO,
     NUM_FOL, AN_PROC,
-    RUT_VEN, DV_VEN, APPATERNO_VEN, APMATERNO_VEN, NOMBRES_VEN, CALLE_VEN, NRO_CALLE_VEN, TELEFONO_VEN, COMUNA_VEN,
-    APPATERNO_COM, APMATERNO_COM, NOMBRES_COM, CALLE_COM, NRO_CALLE_COM, TELEFONO_COM, COMUNA_COM
+    RUT_VEN, DV_VEN, APPATERNO_VEN, APMATERNO_VEN, NOMBRES_VEN, NOM_VEN, CALLE_VEN, NRO_CALLE_VEN, TELEFONO_VEN, COMUNA_VEN,
+    APPATERNO_COM, APMATERNO_COM, NOMBRES_COM, NOM_COM, CALLE_COM, NRO_CALLE_COM, TELEFONO_COM, COMUNA_COM
 FROM not_patente 
 WHERE NUM_FOL = %s AND AN_PROC = %s
 LIMIT 1
 """
-
-# ==========================================
-# FUNCIONES AUXILIARES
-# ==========================================
 
 def limpiar_dato(valor):
     if valor is None:
@@ -77,13 +71,35 @@ def limpiar_dato(valor):
     return str(valor).strip()
 
 # ==========================================
-# CLASE NAVEGADOR PERSONALIZADO (NUEVO)
+# CLASES DE NAVEGADOR (SISTEMA DE POP-UPS)
 # ==========================================
+class VentanaEmergente(QWebEngineView):
+    def __init__(self, profile):
+        super().__init__()
+        self.setWindowTitle("Visor de Documentos / Pago - TGR")
+        self.resize(1000, 750)
+        self.setAttribute(Qt.WA_DeleteOnClose) # Liberar memoria al cerrar
+        
+        # Usamos el MISMO perfil para no perder la sesión/cookies de la TGR
+        nueva_pagina = QWebEnginePage(profile, self)
+        self.setPage(nueva_pagina)
+        
+        # Habilitar PDFs en la ventana nueva
+        settings = self.settings()
+        settings.setAttribute(QWebEngineSettings.WebAttribute.PdfViewerEnabled, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, True)
+
 class NavegadorTGR(QWebEngineView):
+    def __init__(self):
+        super().__init__()
+        self.ventanas_abiertas = []
+
     def createWindow(self, windowType):
-        # Esta es la magia: Si la TGR intenta abrir una pestaña nueva (ej: para pagar),
-        # le decimos que la abra en esta misma ventana para no perderla.
-        return self
+        # En vez de pisar nuestro formulario, abrimos una ventana flotante
+        popup = VentanaEmergente(self.page().profile())
+        popup.show()
+        self.ventanas_abiertas.append(popup)
+        return popup
 
 # ==========================================
 # LÓGICA DE LA APLICACIÓN
@@ -93,7 +109,7 @@ class AsistenteTGR(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Asistente Notaría -> TGR (F23 Directo)")
-        self.resize(1280, 800)
+        self.setFixedSize(1280, 800)
 
         layout = QVBoxLayout()
 
@@ -155,16 +171,14 @@ class AsistenteTGR(QMainWindow):
         self.status_label.setStyleSheet("font-weight: bold; padding: 5px; color: #f1c40f; font-size: 14px;")
         layout.addWidget(self.status_label)
 
-        # Usamos nuestro nuevo navegador con soporte para pestañas emergentes
         self.browser = NavegadorTGR()
+        self.browser.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
-        # Habilitamos Pop-ups, Plugins y el Lector de PDFs interno
         settings = self.browser.settings()
         settings.setAttribute(QWebEngineSettings.WebAttribute.PdfViewerEnabled, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanOpenWindows, True)
         
-        # Conectamos el gestor de descargas
         self.browser.page().profile().downloadRequested.connect(self.gestionar_descarga)
 
         self.browser.setUrl(QUrl("https://www.tesoreria.cl/IntForm23NotarioWeb/"))
@@ -174,9 +188,7 @@ class AsistenteTGR(QMainWindow):
         container.setLayout(layout)
         self.setCentralWidget(container)
 
-    # --- NUEVA FUNCIÓN: GESTOR DE DESCARGAS ---
     def gestionar_descarga(self, download):
-        """Abre la ventana de 'Guardar como...' si la TGR intenta descargar un archivo"""
         ruta_guardado, _ = QFileDialog.getSaveFileName(
             self, 
             "Guardar Archivo (TGR)", 
@@ -228,9 +240,16 @@ class AsistenteTGR(QMainWindow):
         dv_ven = limpiar_dato(row.get('DV_VEN'))
         datos_form['L43'] = f"{rut_ven}-{dv_ven}" if rut_ven and dv_ven else rut_ven
         
-        datos_form['L42'] = limpiar_dato(row.get('APPATERNO_VEN')) 
-        datos_form['L44'] = limpiar_dato(row.get('APMATERNO_VEN')) 
-        datos_form['L45'] = limpiar_dato(row.get('NOMBRES_VEN'))
+        rut_ven_num = int(rut_ven) if rut_ven.isdigit() else 0
+        
+        if rut_ven_num > 50000000:
+            datos_form['L42'] = limpiar_dato(row.get('NOM_VEN') or row.get('NOMBRES_VEN')) 
+            datos_form['L44'] = "" 
+            datos_form['L45'] = "" 
+        else:
+            datos_form['L42'] = limpiar_dato(row.get('APPATERNO_VEN')) 
+            datos_form['L44'] = limpiar_dato(row.get('APMATERNO_VEN')) 
+            datos_form['L45'] = limpiar_dato(row.get('NOMBRES_VEN'))
         
         calle_ven = limpiar_dato(row.get('CALLE_VEN'))
         nro_ven = limpiar_dato(row.get('NRO_CALLE_VEN'))
@@ -243,9 +262,16 @@ class AsistenteTGR(QMainWindow):
         dv_com = limpiar_dato(row.get('DV_COM'))
         datos_form['L33'] = f"{rut_com}-{dv_com}" if rut_com and dv_com else rut_com
         
-        datos_form['L61'] = limpiar_dato(row.get('APPATERNO_COM')) 
-        datos_form['L62'] = limpiar_dato(row.get('APMATERNO_COM'))
-        datos_form['L65'] = limpiar_dato(row.get('NOMBRES_COM'))
+        rut_com_num = int(rut_com) if rut_com.isdigit() else 0
+        
+        if rut_com_num > 50000000:
+            datos_form['L61'] = limpiar_dato(row.get('NOM_COM') or row.get('NOMBRES_COM')) 
+            datos_form['L62'] = "" 
+            datos_form['L65'] = "" 
+        else:
+            datos_form['L61'] = limpiar_dato(row.get('APPATERNO_COM')) 
+            datos_form['L62'] = limpiar_dato(row.get('APMATERNO_COM'))
+            datos_form['L65'] = limpiar_dato(row.get('NOMBRES_COM'))
         
         calle_com = limpiar_dato(row.get('CALLE_COM'))
         nro_com = limpiar_dato(row.get('NRO_CALLE_COM'))
