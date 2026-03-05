@@ -31,7 +31,7 @@ except ImportError:
 # CONFIGURACIÓN DE LA BASE DE DATOS
 # ==========================================
 
-MODO_TESTING = True
+MODO_TESTING = False  # Cambia a True para usar datos de prueba sin conectar a la BD
 
 DB_CONFIG = {
     'host': 'localhost',
